@@ -32,6 +32,17 @@ export class ScreenManager {
         
         // Check if Chrome runtime is available (extension is loaded)
         this.extensionAvailable = typeof chrome !== 'undefined' && chrome.runtime;
+        
+        // Log extension detection result for debugging
+        console.log("Screen: Chrome runtime available:", this.extensionAvailable);
+    }
+    
+    /**
+     * Check if the browser extension is installed and available
+     * @returns {boolean} True if extension is available
+     */
+    isExtensionAvailable() {
+        return this.extensionAvailable && this.extensionId !== null;
     }
 
     // Fallback image functionality removed for simplicity
@@ -307,6 +318,10 @@ export class ScreenManager {
                 return null;
             } else {
                 console.warn("Screen: Extension ID not available");
+                // Try to get extension ID again
+                window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
+                
+                // Return a message to be displayed in the console
                 return null;
             }
         } catch (error) {
