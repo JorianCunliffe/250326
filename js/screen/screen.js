@@ -18,10 +18,6 @@ export class ScreenManager {
         this.isInitialized = false;
         this.extensionId = null; // Will store the extension ID
 
-        // Loading image path for initialization and fallbacks
-        this.loadingImagePath = "js/screen/LOADING.png";
-        this.loadingImageDataUrl = null; // Added to store the data URL of the loading image
-
         this.handleScreenCapture = this.handleScreenCapture.bind(this);
 
         // Set up message listener for communication with extension
@@ -33,27 +29,9 @@ export class ScreenManager {
                 this.handleScreenCapture(event.data);
             }
         });
-
-        this.loadImageAsDataURL(); // Load image as DataURL on construction
     }
 
-    async loadImageAsDataURL() {
-        return fetch(this.loadingImagePath)
-            .then((response) => response.blob())
-            .then(
-                (blob) =>
-                    new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(blob);
-                    }),
-            )
-            .then((dataUrl) => (this.loadingImageDataUrl = dataUrl))
-            .catch((error) =>
-                console.error("Error loading image as DataURL:", error),
-            );
-    }
+    // Fallback image functionality removed for simplicity
 
     handleScreenCapture(response) {
         console.log("Screen: Received capture response:", response);
@@ -83,10 +61,12 @@ export class ScreenManager {
             else if (response.data) {
                 img.src = "data:image/png;base64," + response.data;
             }
-            // Fallback to test image if no valid data
+            // If no valid image data, just display empty preview
             else {
-                console.warn("Screen: No valid image data, using test image");
-                img.src = this.loadingImageDataUrl || this.loadingImagePath; // Use loading image data URL or path
+                console.warn("Screen: No valid image data");
+                preview.innerHTML = "";
+                preview.style.display = "none";
+                return;
             }
 
             img.style.width = "100%";
@@ -117,23 +97,6 @@ export class ScreenManager {
 
         // Create full data URL for image loading
         const dataUrl = "data:image/png;base64," + base64Data;
-
-        // Update preview
-        const preview = document.getElementById("screenPreview");
-        if (preview) {
-            console.log("Screen: Updating preview in processImage");
-            const previewImg = document.createElement("img");
-            previewImg.src = dataUrl;
-            previewImg.style.width = "100%";
-            previewImg.style.height = "auto";
-            preview.innerHTML = "";
-            preview.appendChild(previewImg);
-            // Make sure the preview is visible
-            preview.style.display = "block";
-            console.log("Screen: Preview updated in processImage");
-        } else {
-            console.warn("Screen: Preview element not found in processImage");
-        }
 
         const img = new Image();
 
@@ -207,33 +170,14 @@ export class ScreenManager {
             // Check if extension is installed by sending a message to find the extension ID
             window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
 
-            // Show preview element
+            // Set up empty preview element
             const preview = document.getElementById("screenPreview");
             if (preview) {
                 console.log("Screen: Setting up initial preview");
-                preview.style.display = "block";
-
-                // Create and set up the image element
-                const img = document.createElement("img");
-                img.src = this.loadingImageDataUrl || this.loadingImagePath;
-                img.style.width = "100%";
-                img.style.height = "100%";
-                img.style.objectFit = "contain";
-
-                // Add error handling for the image
-                img.onerror = (e) => {
-                    console.error(
-                        "Screen: Error loading initial preview image:",
-                        e,
-                    );
-                    // Try with a simpler approach as fallback
-                    img.src = this.loadingImageDataUrl || this.loadingImagePath;
-                };
-
-                // Clear and append
+                // Simply clear it and make it ready for screenshots
                 preview.innerHTML = "";
-                preview.appendChild(img);
-                console.log("Screen: Initial preview set up");
+                preview.style.display = "none"; // Hide until we have an actual screenshot
+                console.log("Screen: Initial preview container prepared");
             } else {
                 console.warn(
                     "Screen: Preview element not found during initialization",
@@ -265,11 +209,6 @@ export class ScreenManager {
             if (this.extensionId) {
                 console.log(
                     "Screen: Requesting screenshot from extension:",
-                    this.extensionId,
-                );
-
-                console.log(
-                    "Screen: Sending chrome.runtime.sendMessage to extension ID:",
                     this.extensionId,
                 );
 
@@ -330,15 +269,8 @@ export class ScreenManager {
                                     response.fullData ||
                                     "data:image/png;base64," + data;
                             }
-                            // Fallback if no recognizable format
-                            else {
-                                console.warn(
-                                    "Screen: Unrecognized response format, using test image",
-                                );
-                                data = this.loadingImageDataUrl; //Use loading image data URL
-                                fullData = "data:image/png;base64," + data;
-                            }
 
+                            // Send the message with the screenshot data
                             window.postMessage(
                                 {
                                     type: "SCREENSHOT_RESULT",
@@ -367,13 +299,11 @@ export class ScreenManager {
                     },
                 );
 
-                // Use test image as fallback while waiting for the real screenshot
-                return this.processImage(this.loadingImageDataUrl);
+                // No need to return any fallback image
+                return null;
             } else {
-                console.warn(
-                    "Screen: Extension ID not available, using test image",
-                );
-                return this.processImage(this.loadingImageDataUrl);
+                console.warn("Screen: Extension ID not available");
+                return null;
             }
         } catch (error) {
             console.error("Screen: Error capturing screenshot:", error);
