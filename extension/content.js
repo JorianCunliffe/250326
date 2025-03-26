@@ -5,7 +5,7 @@ console.log('Gemini Live extension content script loaded');
 function validateExtensionId() {
   const extensionId = chrome.runtime.id;
   console.log('Content: VALIDATION - Extension ID:', extensionId);
-  
+
   if (!extensionId) {
     console.error('Content: CRITICAL - Extension ID is undefined or null');
   } else {
@@ -16,7 +16,7 @@ function validateExtensionId() {
       id: extensionId
     }, '*');
   }
-  
+
   return extensionId;
 }
 
@@ -27,7 +27,7 @@ const extensionId = validateExtensionId();
 window.addEventListener('message', function(event) {
   // Make sure the message is from our page
   if (event.source !== window) return;
-  
+
   console.log('Content: Received message from page:', event.data ? event.data.type : 'unknown');
 
   if (event.data && event.data.type === 'GET_EXTENSION_ID') {
@@ -61,19 +61,19 @@ console.log('Content: Extension loaded, announcing presence...');
 function broadcastExtensionId() {
   const currentId = chrome.runtime.id;
   console.log('Content: Broadcasting extension ID:', currentId);
-  
+
   // Send standard EXTENSION_ID message
   window.postMessage({ 
     type: 'EXTENSION_ID',
     id: currentId
   }, '*');
-  
+
   // Also send the EXTENSION_LOADED message
   window.postMessage({ 
     type: 'EXTENSION_LOADED',
     id: currentId
   }, '*');
-  
+
   return currentId;
 }
 
@@ -85,7 +85,7 @@ const extensionId = broadcastExtensionId();
 let checkCount = 0;
 const checkInterval = setInterval(() => {
   checkCount++;
-  
+
   // More frequent initially (every 1s for first 5 checks)
   if (checkCount <= 5) {
     console.log('Content: Frequent check - resending extension ID');
