@@ -1,21 +1,43 @@
 // Content script for handling communication between webpage and extension
 console.log('Gemini Live extension content script loaded');
 
+// Function to validate extension ID
+function validateExtensionId() {
+  const extensionId = chrome.runtime.id;
+  console.log('Content: VALIDATION - Extension ID:', extensionId);
+  
+  if (!extensionId) {
+    console.error('Content: CRITICAL - Extension ID is undefined or null');
+  } else {
+    console.log('Content: ✅ Extension ID validated:', extensionId);
+    // Immediately announce the extension ID to the page
+    window.postMessage({
+      type: 'EXTENSION_ID',
+      id: extensionId
+    }, '*');
+  }
+  
+  return extensionId;
+}
+
+// Validate extension ID immediately
+const extensionId = validateExtensionId();
+
 // Listen for messages from the page
 window.addEventListener('message', function(event) {
   // Make sure the message is from our page
   if (event.source !== window) return;
   
-  console.log('Content: Received message from page:', event.data);
+  console.log('Content: Received message from page:', event.data ? event.data.type : 'unknown');
 
   if (event.data && event.data.type === 'GET_EXTENSION_ID') {
     console.log('Content: Processing GET_EXTENSION_ID request');
-    // Send the extension ID to the page
-    const extensionId = chrome.runtime.id;
-    console.log('Content: Sending extension ID back to page:', extensionId);
+    // Re-validate and send the extension ID to the page
+    const currentId = validateExtensionId();
+    console.log('Content: Sending extension ID back to page:', currentId);
     window.postMessage({
       type: 'EXTENSION_ID',
-      id: extensionId
+      id: currentId
     }, '*');
   } else if (event.data && event.data.type === 'TAKE_SCREENSHOT') {
     console.log('Content: Processing TAKE_SCREENSHOT request');
@@ -33,31 +55,65 @@ window.addEventListener('message', function(event) {
 });
 
 // Let the page know the extension is loaded
-const extensionId = chrome.runtime.id;
-console.log('Content: Extension loaded with ID:', extensionId);
-console.log('Content: Explicitly posting EXTENSION_ID message');
-window.postMessage({ 
-  type: 'EXTENSION_ID',
-  id: extensionId
-}, '*');
+console.log('Content: Extension loaded, announcing presence...');
 
-// Also send the regular loaded message
-window.postMessage({ 
-  type: 'EXTENSION_LOADED',
-  id: extensionId
-}, '*');
-
-// Add a periodic check to ensure extension ID is communicated
-const checkInterval = setInterval(() => {
-  console.log('Content: Periodic check - resending extension ID');
+// Function to broadcast extension ID
+function broadcastExtensionId() {
+  const currentId = chrome.runtime.id;
+  console.log('Content: Broadcasting extension ID:', currentId);
+  
+  // Send standard EXTENSION_ID message
   window.postMessage({ 
     type: 'EXTENSION_ID',
-    id: extensionId
+    id: currentId
   }, '*');
-}, 5000); // Every 5 seconds
+  
+  // Also send the EXTENSION_LOADED message
+  window.postMessage({ 
+    type: 'EXTENSION_LOADED',
+    id: currentId
+  }, '*');
+  
+  return currentId;
+}
 
-// Clear interval after 30 seconds to avoid infinite messaging
+// Broadcast immediately
+const extensionId = broadcastExtensionId();
+
+// Add a periodic check to ensure extension ID is communicated
+// Using a more frequent interval initially, then slowing down
+let checkCount = 0;
+const checkInterval = setInterval(() => {
+  checkCount++;
+  
+  // More frequent initially (every 1s for first 5 checks)
+  if (checkCount <= 5) {
+    console.log('Content: Frequent check - resending extension ID');
+    broadcastExtensionId();
+  } 
+  // Then every 5s for next 5 checks
+  else if (checkCount <= 10) {
+    console.log('Content: Regular check - resending extension ID');
+    broadcastExtensionId();
+  }
+  // Then stop
+  else {
+    clearInterval(checkInterval);
+    console.log('Content: Stopped periodic ID checks after multiple attempts');
+  }
+}, checkCount <= 5 ? 1000 : 5000);
+
+// Verify chrome.runtime is accessible
 setTimeout(() => {
-  clearInterval(checkInterval);
-  console.log('Content: Stopped periodic ID checks');
-}, 30000);
+  try {
+    console.log('Content: Verifying chrome.runtime is accessible');
+    if (chrome && chrome.runtime) {
+      console.log('Content: ✅ chrome.runtime verified as accessible');
+      console.log('Content: Current extension ID:', chrome.runtime.id);
+    } else {
+      console.error('Content: ❌ chrome.runtime is not accessible');
+    }
+  } catch (error) {
+    console.error('Content: ❌ Error accessing chrome.runtime:', error);
+  }
+}, 2000);

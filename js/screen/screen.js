@@ -17,6 +17,7 @@ export class ScreenManager {
         this.captureInterval = null;
         this.isInitialized = false;
         this.extensionId = null; // Will store the extension ID
+        this.messageReceived = false; // Flag to track if we've received any messages
 
         this.handleScreenCapture = this.handleScreenCapture.bind(this);
 
@@ -24,27 +25,46 @@ export class ScreenManager {
         console.log("Screen: Setting up message listener for extension communication");
         
         window.addEventListener("message", (event) => {
-            console.log("Screen: Received message event:", event.data ? event.data.type : "unknown type");
+            this.messageReceived = true;
+            console.log("Screen: 📨 Received message event:", event.data ? event.data.type : "unknown type");
             
             if (event.data && event.data.type === "EXTENSION_ID") {
                 this.extensionId = event.data.id;
                 console.log("Screen: ✅ Received extension ID:", this.extensionId);
-                // Store in sessionStorage for persistence
-                try {
-                    sessionStorage.setItem('extensionId', this.extensionId);
-                    console.log("Screen: Stored extension ID in sessionStorage");
-                } catch (e) {
-                    console.error("Screen: Failed to store in sessionStorage:", e);
+                
+                // Validate the extension ID
+                if (!this.extensionId || this.extensionId === "null" || this.extensionId === "undefined") {
+                    console.error("Screen: ❌ Invalid extension ID received:", this.extensionId);
+                } else {
+                    // Store in sessionStorage for persistence
+                    try {
+                        sessionStorage.setItem('extensionId', this.extensionId);
+                        console.log("Screen: Stored extension ID in sessionStorage");
+                        
+                        // Check and report if extension is available after getting ID
+                        this.checkExtensionAvailability();
+                    } catch (e) {
+                        console.error("Screen: Failed to store in sessionStorage:", e);
+                    }
                 }
             } else if (event.data && event.data.type === "EXTENSION_LOADED") {
                 console.log("Screen: ✅ Extension loaded message received with ID:", event.data.id);
                 this.extensionId = event.data.id;
-                // Store in sessionStorage for persistence
-                try {
-                    sessionStorage.setItem('extensionId', this.extensionId);
-                    console.log("Screen: Stored extension ID from EXTENSION_LOADED in sessionStorage");
-                } catch (e) {
-                    console.error("Screen: Failed to store in sessionStorage:", e);
+                
+                // Validate the extension ID
+                if (!this.extensionId || this.extensionId === "null" || this.extensionId === "undefined") {
+                    console.error("Screen: ❌ Invalid extension ID received from EXTENSION_LOADED:", this.extensionId);
+                } else {
+                    // Store in sessionStorage for persistence
+                    try {
+                        sessionStorage.setItem('extensionId', this.extensionId);
+                        console.log("Screen: Stored extension ID from EXTENSION_LOADED in sessionStorage");
+                        
+                        // Check and report if extension is available after getting ID
+                        this.checkExtensionAvailability();
+                    } catch (e) {
+                        console.error("Screen: Failed to store in sessionStorage:", e);
+                    }
                 }
             } else if (event.data && event.data.type === "SCREENSHOT_RESULT") {
                 console.log("Screen: Screenshot result received");
@@ -64,15 +84,51 @@ export class ScreenManager {
         }
         
         // Check if Chrome runtime is available (extension is loaded)
-        this.extensionAvailable = typeof chrome !== 'undefined' && chrome.runtime;
-        
-        // Log extension detection result for debugging
-        console.log("Screen: Chrome runtime available:", this.extensionAvailable);
-        console.log("Screen: Current extension ID:", this.extensionId);
+        this.checkExtensionAvailability();
         
         // Request extension ID explicitly
         console.log("Screen: Explicitly requesting extension ID");
         window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
+        
+        // Set a delayed check to validate communication
+        setTimeout(() => this.validateCommunication(), 3000);
+    }
+    
+    /**
+     * Check and log if the extension is available
+     */
+    checkExtensionAvailability() {
+        // Verify if chrome and runtime exist
+        this.extensionAvailable = typeof chrome !== 'undefined' && chrome.runtime;
+        
+        // Log detailed extension detection results
+        console.log("Screen: Chrome object available:", typeof chrome !== 'undefined');
+        console.log("Screen: Chrome runtime available:", this.extensionAvailable);
+        console.log("Screen: Current extension ID:", this.extensionId);
+        
+        if (!this.extensionAvailable) {
+            console.warn("Screen: ⚠️ Chrome extension runtime not available - screenshot functionality will not work");
+        } else if (!this.extensionId) {
+            console.warn("Screen: ⚠️ Extension ID not available despite runtime being available");
+        } else {
+            console.log("Screen: ✅ Extension appears to be properly configured");
+        }
+    }
+    
+    /**
+     * Validate if we're receiving communication from the extension
+     */
+    validateCommunication() {
+        if (!this.messageReceived) {
+            console.error("Screen: ❌ No messages received from extension after timeout");
+            console.log("Screen: Extension status - ID:", this.extensionId, "Available:", this.extensionAvailable);
+            
+            // Attempt to re-request the extension ID
+            console.log("Screen: Re-requesting extension ID after timeout");
+            window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
+        } else {
+            console.log("Screen: ✅ Communication with extension confirmed");
+        }
     }
     
     /**
