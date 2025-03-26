@@ -29,6 +29,9 @@ export class ScreenManager {
                 this.handleScreenCapture(event.data);
             }
         });
+        
+        // Check if Chrome runtime is available (extension is loaded)
+        this.extensionAvailable = typeof chrome !== 'undefined' && chrome.runtime;
     }
 
     // Fallback image functionality removed for simplicity
@@ -165,6 +168,7 @@ export class ScreenManager {
         if (this.isInitialized) return;
 
         console.log("Screen: Initializing screen capture");
+        console.log("Screen: Extension available:", this.extensionAvailable);
 
         try {
             // Check if extension is installed by sending a message to find the extension ID
@@ -205,8 +209,8 @@ export class ScreenManager {
         console.log("Screen: Capturing screenshot");
 
         try {
-            // If we have the extension ID, use it to request a screenshot
-            if (this.extensionId) {
+            // If we have the extension ID and chrome runtime is available, use it to request a screenshot
+            if (this.extensionId && this.extensionAvailable) {
                 console.log(
                     "Screen: Requesting screenshot from extension:",
                     this.extensionId,

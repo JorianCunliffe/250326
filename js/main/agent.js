@@ -213,38 +213,17 @@ export class GeminiAgent{
         }
 
         try {
-            // Load and convert sample image to base64
-            const loadSampleImage = async () => {
-                try {
-                    const response = await fetch('./js/screen/LOADING.png');
-                    const blob = await response.blob();
-                    return new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                            // Get base64 data without the prefix
-                            const base64Data = reader.result.split(',')[1];
-                            resolve(base64Data);
-                        };
-                        reader.onerror = reject;
-                        reader.readAsDataURL(blob);
-                    });
-                } catch (error) {
-                    console.error('Error loading sample image:', error);
-                    return null;
-                }
-            };
-
-            // Get the sample image base64 data
-            const sampleImageBase64 = await loadSampleImage();
+            await this.screenManager.initialize();
             
-            // Set up interval with fixed 500ms delay
-            this.screenInterval = setInterval(() => {
-                if (sampleImageBase64) {
-                    this.client.sendImage(sampleImageBase64);
+            // Set up interval to capture and send screenshots
+            this.screenInterval = setInterval(async () => {
+                const imageBase64 = await this.screenManager.capture();
+                if (imageBase64) {
+                    this.client.sendImage(imageBase64);
                 }
-            }, 500); // Fixed 500ms interval
-
-            console.info('Screen sharing started with sample image');
+            }, this.captureInterval);
+            
+            console.info('Screen sharing started');
         } catch (error) {
             await this.stopScreenShare();
             throw new Error('Failed to start screen sharing: ' + error);
