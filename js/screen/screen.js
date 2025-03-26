@@ -21,20 +21,58 @@ export class ScreenManager {
         this.handleScreenCapture = this.handleScreenCapture.bind(this);
 
         // Set up message listener for communication with extension
+        console.log("Screen: Setting up message listener for extension communication");
+        
         window.addEventListener("message", (event) => {
+            console.log("Screen: Received message event:", event.data ? event.data.type : "unknown type");
+            
             if (event.data && event.data.type === "EXTENSION_ID") {
                 this.extensionId = event.data.id;
-                console.log("Screen: Received extension ID:", this.extensionId);
+                console.log("Screen: ✅ Received extension ID:", this.extensionId);
+                // Store in sessionStorage for persistence
+                try {
+                    sessionStorage.setItem('extensionId', this.extensionId);
+                    console.log("Screen: Stored extension ID in sessionStorage");
+                } catch (e) {
+                    console.error("Screen: Failed to store in sessionStorage:", e);
+                }
+            } else if (event.data && event.data.type === "EXTENSION_LOADED") {
+                console.log("Screen: ✅ Extension loaded message received with ID:", event.data.id);
+                this.extensionId = event.data.id;
+                // Store in sessionStorage for persistence
+                try {
+                    sessionStorage.setItem('extensionId', this.extensionId);
+                    console.log("Screen: Stored extension ID from EXTENSION_LOADED in sessionStorage");
+                } catch (e) {
+                    console.error("Screen: Failed to store in sessionStorage:", e);
+                }
             } else if (event.data && event.data.type === "SCREENSHOT_RESULT") {
+                console.log("Screen: Screenshot result received");
                 this.handleScreenCapture(event.data);
             }
         });
+        
+        // Try to get extension ID from sessionStorage if available
+        try {
+            const storedId = sessionStorage.getItem('extensionId');
+            if (storedId) {
+                console.log("Screen: Retrieved extension ID from sessionStorage:", storedId);
+                this.extensionId = storedId;
+            }
+        } catch (e) {
+            console.error("Screen: Failed to retrieve from sessionStorage:", e);
+        }
         
         // Check if Chrome runtime is available (extension is loaded)
         this.extensionAvailable = typeof chrome !== 'undefined' && chrome.runtime;
         
         // Log extension detection result for debugging
         console.log("Screen: Chrome runtime available:", this.extensionAvailable);
+        console.log("Screen: Current extension ID:", this.extensionId);
+        
+        // Request extension ID explicitly
+        console.log("Screen: Explicitly requesting extension ID");
+        window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
     }
     
     /**
@@ -198,6 +236,28 @@ export class ScreenManager {
                     "Screen: Preview element not found during initialization",
                 );
             }
+            
+            // Check if we already have extension ID from storage
+            try {
+                const storedId = sessionStorage.getItem('extensionId');
+                if (storedId) {
+                    console.log("Screen: Using extension ID from sessionStorage during initialize:", storedId);
+                    this.extensionId = storedId;
+                } else {
+                    // Request extension ID again explicitly
+                    console.log("Screen: Re-requesting extension ID during initialize");
+                    window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
+                    
+                    // Set a timeout to check if we got the extension ID
+                    setTimeout(() => {
+                        console.log("Screen: Extension ID check timeout - current status:", 
+                                   "ID:", this.extensionId,
+                                   "Available:", this.isExtensionAvailable());
+                    }, 2000);
+                }
+            } catch (e) {
+                console.error("Screen: Failed to work with sessionStorage in initialize:", e);
+            }
 
             this.isInitialized = true;
             console.log("Screen: Screen capture initialized");
@@ -218,12 +278,27 @@ export class ScreenManager {
         }
 
         console.log("Screen: Capturing screenshot");
+        
+        // Try to get extension ID from sessionStorage again (in case it was set after initialization)
+        try {
+            const storedId = sessionStorage.getItem('extensionId');
+            if (storedId && !this.extensionId) {
+                console.log("Screen: Retrieved extension ID from sessionStorage in capture():", storedId);
+                this.extensionId = storedId;
+            }
+        } catch (e) {
+            console.error("Screen: Failed to retrieve from sessionStorage in capture():", e);
+        }
+        
+        console.log("Screen: Extension status before capture -", 
+                   "ID available:", !!this.extensionId, 
+                   "Runtime available:", this.extensionAvailable);
 
         try {
             // If we have the extension ID and chrome runtime is available, use it to request a screenshot
             if (this.extensionId && this.extensionAvailable) {
                 console.log(
-                    "Screen: Requesting screenshot from extension:",
+                    "Screen: ✅ Requesting screenshot from extension:",
                     this.extensionId,
                 );
 

@@ -35,7 +35,29 @@ window.addEventListener('message', function(event) {
 // Let the page know the extension is loaded
 const extensionId = chrome.runtime.id;
 console.log('Content: Extension loaded with ID:', extensionId);
+console.log('Content: Explicitly posting EXTENSION_ID message');
+window.postMessage({ 
+  type: 'EXTENSION_ID',
+  id: extensionId
+}, '*');
+
+// Also send the regular loaded message
 window.postMessage({ 
   type: 'EXTENSION_LOADED',
   id: extensionId
 }, '*');
+
+// Add a periodic check to ensure extension ID is communicated
+const checkInterval = setInterval(() => {
+  console.log('Content: Periodic check - resending extension ID');
+  window.postMessage({ 
+    type: 'EXTENSION_ID',
+    id: extensionId
+  }, '*');
+}, 5000); // Every 5 seconds
+
+// Clear interval after 30 seconds to avoid infinite messaging
+setTimeout(() => {
+  clearInterval(checkInterval);
+  console.log('Content: Stopped periodic ID checks');
+}, 30000);
