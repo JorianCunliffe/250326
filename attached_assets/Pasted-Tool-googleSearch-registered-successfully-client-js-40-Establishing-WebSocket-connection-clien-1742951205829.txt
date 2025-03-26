@@ -1,0 +1,44 @@
+Tool googleSearch registered successfully
+client.js:40 🔗 Establishing WebSocket connection...
+client.js:47 🔗 Successfully connected to websocket
+streamer.js:35 AudioStreamer initialized Object
+streamer.js:259 AudioStreamer initialization complete
+deepgram.js:13 DeepgramTranscriber initialized
+agent.js:313 Initializing Deepgram model speech transcriber...
+deepgram.js:19 Attempting to connect to Deepgram WebSocket...
+deepgram.js:27 WebSocket connection established
+agent.js:318 Model speech transcriber connection established, setting up keep-alive...
+agent.js:406 GeminiAgent initialized successfully
+agent.js:164 Camera capture started
+agent.js:112 Model finished speaking
+agent.js:184 Camera capture stopped
+2agent.js:322 Sent keep-alive message to model speech transcriber
+recorder.js:108 Microphone suspended
+agent.js:322 Sent keep-alive message to model speech transcriber
+agent.js:112 Model finished speaking
+screen.js:234 Screen: Initializing screen capture
+screen.js:243 Screen: Setting up initial preview
+screen.js:264 Screen: Initial preview set up
+screen.js:287 Screen: Screen capture initialized
+agent.js:213 Screen sharing started
+screen.js:30 Screen: Received message event: https://gemini-4.replit.app GET_EXTENSION_ID
+screen.js:62 Screen: Received unhandled message type: GET_EXTENSION_ID
+agent.js:322 Sent keep-alive message to model speech transcriber
+screen.js:307 Screen: Capturing screenshot
+screen.js:343 Screen: Is extension context? undefined
+screen.js:369 Screen: Attempting to communicate with extension via postMessage
+screen.js:373 Screen: Sending screenshot request message
+screen.js:384 Screen: Also sending to parent frame
+screen.js:30 Screen: Received message event: https://gemini-4.replit.app REQUEST_SCREENSHOT
+screen.js:62 Screen: Received unhandled message type: REQUEST_SCREENSHOT
+screen.js:303 Screen: Rate limiting - ignoring request (999ms since last request)
+screen.js:396 Screen: No screenshot response received, using fallback image
+screen.js:207 Screen: Image loaded successfully, dimensions: 1172 x 705
+screen.js:222 Screen: Image processed successfully
+screen.js:307 Screen: Capturing screenshot
+screen.js:343 Screen: Is extension context? undefined
+screen.js:369 Screen: Attempting to communicate with extension via postMessage
+screen.js:373 Screen: Sending screenshot request message
+screen.js:384 Screen: Also sending to parent frame
+screen.js:30 Screen: Received message event: https://gemini-4.replit.app REQUEST_SCREENSHOT
+screen.js:62 Screen: Received unhandled message type: REQUEST_SCREENSHOT
