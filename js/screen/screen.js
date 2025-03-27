@@ -12,7 +12,12 @@ export class ScreenManager {
             width: config.width || 1280,
             quality: config.quality || 0.8,
             onStop: config.onStop || (() => {}),
+            client: config.client || null, // Store the WebSocket client
         };
+
+        if (!this.config.client) {
+            console.warn("ScreenManager initialized without a WebSocket client. Cannot send screenshots to Gemini.");
+        }
 
         this.captureInterval = null; // Note: Not used in current logic, consider removing if unused
         this.isInitialized = false;
@@ -103,10 +108,13 @@ export class ScreenManager {
         console.log("Screen: Handling capture response:", response);
         const preview = document.getElementById("screenPreview");
 
+        // --- Preview Element Check ---
         if (!preview) {
             console.error("Screen: Preview element (#screenPreview) not found in DOM.");
             return; // Cannot proceed without preview element
         }
+
+        // --- Error Handling ---
 
         if (!response || !response.success || !response.imageData) {
             const errorMsg = response?.message || "Unknown screen capture error or no image data";
@@ -147,19 +155,25 @@ export class ScreenManager {
 
         console.log("Screen: Preview updated with received image.");
 
-        // --- Optional: Process the image AFTER displaying ---
-        // If you need the resized/JPEG version for sending elsewhere
-        // this.processImage(response.imageData)
-        //    .then(processedData => {
-        //        if (processedData) {
-        //             console.log("Screen: Image processed successfully after display.");
-        //             // Use processedData (base64 string without prefix)
-        //        }
-        //    });
+        // --- Process and send the image to Gemini if client is available ---
+        if (this.config.client) {
+            this.processImage(response.imageData)
+                .then(processedData => {
+                    if (processedData) {
+                        console.log("Screen: Sending processed image to Gemini via client...");
+                        this.config.client.sendImage(processedData);
+                    }
+                })
+                .catch(error => {
+                    console.error("Screen: Error processing/sending image:", error);
+                });
+        } else {
+            console.warn("Screen: Cannot send image to Gemini - no client available");
+        }
     }
 
     async processImage(imageDataUrl) {
-         // Input should be a full data URL (e.g., from response.imageData)
+        // Input should be a full data URL (e.g., from response.imageData)
         if (!imageDataUrl || !imageDataUrl.startsWith("data:image")) {
             console.error("Screen: processImage requires a valid data URL.", imageDataUrl ? imageDataUrl.substring(0, 30) + "..." : "null");
             return null;
@@ -218,6 +232,13 @@ export class ScreenManager {
     async initialize() {
         if (this.isInitialized) return;
         console.log("Screen: Initializing screen capture manager...");
+        
+        // Log client availability status
+        if (this.config.client) {
+            console.log("Screen: Client is available for sending captured images");
+        } else {
+            console.warn("Screen: No client available during initialization");
+        }
 
         // We request the ID in the constructor now
         // this.requestExtensionId();
