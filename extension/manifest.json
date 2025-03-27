@@ -10,6 +10,9 @@
     "scripting",
     "storage"
   ],
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; img-src 'self' data: blob: https://*.replit.app; connect-src 'self' https://*.replit.app wss://*.replit.app; frame-src 'self' https://*.replit.app;"
+  },
   "host_permissions": [
     "<all_urls>"
   ],
