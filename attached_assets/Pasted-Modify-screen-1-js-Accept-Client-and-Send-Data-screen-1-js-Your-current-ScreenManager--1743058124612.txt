@@ -1,0 +1,96 @@
+Modify screen (1).js - Accept Client and Send Data:
+
+// screen (1).js (Your current ScreenManager)
+
+export class ScreenManager {
+    constructor(config = {}) {
+         this.config = {
+            width: config.width || 1280,
+            quality: config.quality || 0.8,
+            onStop: config.onStop || (() => {}),
+            // --- MODIFICATION START ---
+            client: config.client || null, // Store the WebSocket client
+            // --- MODIFICATION END ---
+        };
+
+        // ... (rest of constructor: isInitialized, extensionId, etc.) ...
+         if (!this.config.client) {
+             console.warn("ScreenManager initialized without a WebSocket client. Cannot send screenshots to Gemini.");
+         }
+
+        // ... (message listener setup remains the same) ...
+    }
+
+    // ... (requestExtensionId, takeScreenshot, checkExtensionAvailability remain the same) ...
+
+    handleScreenCapture(response) {
+        // Expects response = { success: boolean, imageData?: string, message?: string }
+        console.log("Screen: Handling capture response:", response);
+        const preview = document.getElementById("screenPreview");
+
+        // --- Preview Element Check ---
+        if (!preview) {
+            console.error("Screen: Preview element (#screenPreview) not found in DOM.");
+            return;
+        }
+
+        // --- Error Handling ---
+        if (!response || !response.success || !response.imageData) {
+            const errorMsg = response?.message || "Unknown screen capture error or no image data";
+            console.error(`Screen: Screen capture failed or invalid response: ${errorMsg}`);
+            preview.innerHTML = `<p style="color: red; padding: 10px;">Screenshot Failed: ${errorMsg}</p>`;
+            preview.style.display = "block";
+            return;
+        }
+
+        // --- Display successful screenshot (existing code) ---
+        console.log("Screen: Setting up preview for successful screenshot.");
+        const img = document.createElement("img");
+        img.onload = () => console.log("Screen: Preview image loaded successfully.");
+        img.onerror = (e) => { /* ... existing error logging for CSP ... */ };
+        img.src = response.imageData; // Full data URL from background.js
+        img.style.width = "100%";
+        img.style.height = "auto";
+        img.style.display = "block";
+        preview.innerHTML = "";
+        preview.appendChild(img);
+        preview.style.display = "block";
+        console.log("Screen: Preview updated with received image.");
+
+
+        // --- MODIFICATION START: Process and Send Data to Gemini ---
+        if (this.config.client && typeof this.config.client.sendImage === 'function') {
+            console.log("Screen: Processing image before sending to client...");
+            this.processImage(response.imageData) // processImage expects full data URL
+                .then(processedBase64 => {
+                    if (processedBase64) {
+                        console.log("Screen: Sending processed image to WebSocket client.");
+                        this.config.client.sendImage(processedBase64); // Send BASE64 string only
+                    } else {
+                        console.error("Screen: Image processing failed, cannot send to client.");
+                    }
+                })
+                .catch(err => {
+                    console.error("Screen: Error processing image for client:", err);
+                });
+        } else {
+            console.warn("Screen: WebSocket client not available in ScreenManager. Cannot send screenshot to Gemini.");
+        }
+        // --- MODIFICATION END ---
+    }
+
+    // ... (processImage, initialize, capture (now unused?), dispose remain mostly the same) ...
+
+    // Note: The `capture()` method in screen (1).js is now effectively unused by the agent.js interval.
+    // The interval calls `takeScreenshot()` instead. You might want to rename/refactor `capture()`
+    // if it's confusing, or remove it if nothing else calls it.
+     async capture() {
+         // This method is no longer directly used by the agent's interval loop
+         // for sending data. It only initiates the postMessage request.
+         // Consider if this method is still needed or if takeScreenshot() is sufficient.
+         console.warn("ScreenManager.capture() called - this method doesn't return image data directly in the extension flow.");
+         const requestSent = this.takeScreenshot();
+         return null; // Explicitly return null as data is async
+     }
+
+}
