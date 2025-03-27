@@ -11,7 +11,7 @@ class ConfigManager {
     };
     this.initialized = false;
   }
-  
+
   async initialize() {
     try {
       // Load from storage or set defaults
@@ -30,7 +30,7 @@ class ConfigManager {
       return this.config;
     }
   }
-  
+
   async saveConfig(updates) {
     try {
       this.config = { ...this.config, ...updates };
@@ -41,7 +41,7 @@ class ConfigManager {
       return this.config;
     }
   }
-  
+
   getConfig() {
     return this.config;
   }
@@ -133,7 +133,7 @@ class CameraHandler {
     this.active = false;
     this.frameInterval = null;
   }
-  
+
   async initialize() {
     this.videoElement = document.createElement('video');
     this.videoElement.autoplay = true;
@@ -141,17 +141,17 @@ class CameraHandler {
     document.body.appendChild(this.videoElement);
     return this;
   }
-  
+
   async startStream() {
     try {
       if (this.stream) {
         this.stopStream();
       }
-      
+
       this.stream = await navigator.mediaDevices.getUserMedia({ 
         video: { width: 640, height: 480 } 
       });
-      
+
       this.videoElement.srcObject = this.stream;
       this.active = true;
       return true;
@@ -161,37 +161,37 @@ class CameraHandler {
       return false;
     }
   }
-  
+
   stopStream() {
     if (this.stream) {
       this.stream.getTracks().forEach(track => track.stop());
       this.stream = null;
     }
-    
+
     if (this.frameInterval) {
       clearInterval(this.frameInterval);
       this.frameInterval = null;
     }
-    
+
     this.active = false;
   }
-  
+
   captureFrame() {
     if (!this.active || !this.stream) {
       return null;
     }
-    
+
     try {
       const { videoWidth, videoHeight } = this.videoElement;
-      
+
       // Ensure canvas matches video dimensions
       this.canvas.width = videoWidth;
       this.canvas.height = videoHeight;
-      
+
       // Draw video frame to canvas
       const ctx = this.canvas.getContext('2d');
       ctx.drawImage(this.videoElement, 0, 0, videoWidth, videoHeight);
-      
+
       // Get base64 image data
       const imageData = this.canvas.toDataURL('image/jpeg', 0.8);
       return imageData.split(',')[1]; // Remove data URL prefix
@@ -200,12 +200,12 @@ class CameraHandler {
       return null;
     }
   }
-  
+
   startFrameCapture(callback, interval = 1000) {
     if (this.frameInterval) {
       this.stopFrameCapture();
     }
-    
+
     this.frameInterval = setInterval(() => {
       const frame = this.captureFrame();
       if (frame && callback) {
@@ -213,14 +213,14 @@ class CameraHandler {
       }
     }, interval);
   }
-  
+
   stopFrameCapture() {
     if (this.frameInterval) {
       clearInterval(this.frameInterval);
       this.frameInterval = null;
     }
   }
-  
+
   cleanup() {
     this.stopStream();
     if (this.videoElement && this.videoElement.parentNode) {
@@ -236,37 +236,37 @@ class MessageManager {
     this.handlers = {};
     this.iframe = null;
   }
-  
+
   initialize(iframeElement) {
     this.iframe = iframeElement;
-    
+
     window.addEventListener('message', (event) => {
       if (event.origin !== this.targetOrigin) return;
-      
+
       const { type, data } = event.data;
       if (type && this.handlers[type]) {
         this.handlers[type](data);
       }
     });
-    
+
     return this;
   }
-  
+
   registerHandler(messageType, callback) {
     this.handlers[messageType] = callback;
   }
-  
+
   sendMessage(type, data) {
     if (!this.iframe) {
       console.error('Iframe not initialized');
       return false;
     }
-    
+
     this.iframe.contentWindow.postMessage({
       type,
       data
     }, this.targetOrigin);
-    
+
     return true;
   }
 }
@@ -281,79 +281,81 @@ class TrilliumExtension {
       MODE_CHANGE: 'MODE_CHANGE',
       SCREENSHOT_REQUEST: 'REQUEST_SCREENSHOT',
       SCREENSHOT_RESPONSE: 'SCREENSHOT_RESPONSE',
-      CAMERA_FRAME: 'CAMERA_FRAME'
+      CAMERA_FRAME: 'CAMERA_FRAME',
+      GET_EXTENSION_ID: 'GET_EXTENSION_ID',
+      EXTENSION_ID: 'EXTENSION_ID'
     };
-    
+
     // Modules
     this.configManager = new ConfigManager();
     this.screenshotHandler = new ScreenshotHandler();
     this.cameraHandler = null; // Initialized on demand
     this.messageManager = new MessageManager(this.TARGET_ORIGIN);
     this.setupForm = null; // Will be initialized after DOM is ready
-    
+
     // State
     this.currentMode = 'screenshot'; // 'screenshot' or 'camera'
     this.initialized = false;
   }
-  
+
   async initialize() {
     try {
       // Get elements
-      this.iframeElement = document.getElementById('app-frame');
+      this.iframeElement = document.getElementById('appFrame');
       this.previewElement = document.getElementById('snapshotPreview');
       this.toggleContainer = document.getElementById('mode-toggle-container');
-      
+
       if (!this.iframeElement) {
         throw new Error('Required elements not found');
       }
-      
+
       // Init modules
       await this.configManager.initialize();
       this.messageManager.initialize(this.iframeElement);
-      
+
       // Initialize setup form
       this.setupForm = new SetupForm(this.configManager);
       this.setupForm.initialize();
-      
+
       // Listen for config updates from the setup form
       window.addEventListener('configUpdated', (event) => {
         // Send updated config to the iframe
         this.sendConfig();
       });
-      
+
       // Listen for config requests from the iframe
       window.addEventListener('configRequested', () => {
         // Send current config to the iframe
         this.sendConfig();
       });
-      
+
       // Register message handlers
       this.registerMessageHandlers();
-      
+
       // Create UI elements
       this.createToggleUI();
-      
+
       // Load previous snapshot if available
       const latestSnapshot = await this.screenshotHandler.getLatestSnapshot();
       if (latestSnapshot) {
         this.previewElement.src = latestSnapshot;
         this.previewElement.style.display = 'block';
       }
-      
+
       this.initialized = true;
-      
+
       // Send initial config to iframe once it loads
       this.iframeElement.addEventListener('load', () => {
         this.sendConfig();
       });
-      
+
       return true;
     } catch (error) {
       console.error('Initialization error:', error);
       return false;
     }
   }
-  
+
   createToggleUI() {
     const toggleHTML = `
       <div class="toggle-control">
@@ -365,27 +367,27 @@ class TrilliumExtension {
         <span id="mode-label">Screenshot</span>
       </div>
     `;
-    
+
     this.toggleContainer.innerHTML = toggleHTML;
-    
+
     // Add event listener
     document.getElementById('mode-switch').addEventListener('change', (e) => {
       this.setMode(e.target.checked ? 'camera' : 'screenshot');
     });
   }
-  
+
   async setMode(newMode) {
     if (newMode === this.currentMode) return;
-    
+
     // Update UI
     document.getElementById('mode-label').textContent = 
       newMode.charAt(0).toUpperCase() + newMode.slice(1);
-    
+
     // Teardown previous mode
     if (this.currentMode === 'camera' && this.cameraHandler) {
       this.cameraHandler.stopStream();
     }
-    
+
     // Setup new mode
     if (newMode === 'camera') {
       // Initialize camera handler if needed
@@ -393,7 +395,7 @@ class TrilliumExtension {
         this.cameraHandler = new CameraHandler();
         await this.cameraHandler.initialize();
       }
-      
+
       const success = await this.cameraHandler.startStream();
       if (!success) {
         // Fallback to screenshot mode
@@ -402,40 +404,53 @@ class TrilliumExtension {
         this.showError('Could not access camera. Please check permissions.');
         return;
       }
-      
+
       // Start sending frames when camera is active
       this.cameraHandler.startFrameCapture((frameData) => {
         this.messageManager.sendMessage(this.MESSAGE_TYPES.CAMERA_FRAME, frameData);
       }, 1000); // Send frame every second
     }
-    
+
     // Update state
     this.currentMode = newMode;
-    
+
     // Inform iframe about mode change
     this.messageManager.sendMessage(this.MESSAGE_TYPES.MODE_CHANGE, {
       mode: this.currentMode
     });
   }
-  
+
   registerMessageHandlers() {
+    // Handle GET_EXTENSION_ID message
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'GET_EXTENSION_ID') {
+        console.log('Sidebar: Received request for extension ID');
+        // Send back the extension ID
+        window.postMessage({
+          type: 'EXTENSION_ID',
+          id: chrome.runtime.id
+        }, '*');
+        console.log('Sidebar: Sent extension ID:', chrome.runtime.id);
+      }
+    });
+
     this.messageManager.registerHandler(
-      this.MESSAGE_TYPES.SCREENSHOT_REQUEST, 
+      this.MESSAGE_TYPES.SCREENSHOT_REQUEST,
       async () => {
         if (this.currentMode !== 'screenshot') return;
-        
+
         const result = await this.screenshotHandler.takeSnapshot();
         if (result.success) {
           // Update preview
           this.previewElement.src = result.fullData;
           this.previewElement.style.display = 'block';
-          
+
           // Show success message
           this.showSuccess('Snapshot saved!');
-          
+
           // Send response
           this.messageManager.sendMessage(
-            this.MESSAGE_TYPES.SCREENSHOT_RESPONSE, 
+            this.MESSAGE_TYPES.SCREENSHOT_RESPONSE,
             result.data
           );
         } else {
@@ -444,12 +459,12 @@ class TrilliumExtension {
       }
     );
   }
-  
+
   sendConfig() {
     const config = this.configManager.getConfig();
     this.messageManager.sendMessage(this.MESSAGE_TYPES.CONFIG_TRANSFER, config);
   }
-  
+
   showError(message) {
     const errorElement = document.getElementById('errorMessage');
     if (errorElement) {
@@ -460,7 +475,7 @@ class TrilliumExtension {
       }, 3000);
     }
   }
-  
+
   showSuccess(message) {
     const successElement = document.getElementById('successMessage');
     if (successElement) {

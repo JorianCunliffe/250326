@@ -1,4 +1,4 @@
-// screen.js - Handles screen capture functionality - 250326 - 14.52
+// screen.js - Handles screen capture functionality - 250326
 
 export class ScreenManager {
     /**
@@ -17,129 +17,112 @@ export class ScreenManager {
         this.captureInterval = null;
         this.isInitialized = false;
         this.extensionId = null; // Will store the extension ID
-        this.messageReceived = false; // Flag to track if we've received any messages
+        this.isExtensionAvailable = false; // Track extension availability status
+
+        // Loading image path for initialization and fallbacks
+        this.loadingImagePath = "js/screen/LOADING.png";
+        this.loadingImageDataUrl = null; // Added to store the data URL of the loading image
 
         this.handleScreenCapture = this.handleScreenCapture.bind(this);
 
-        // Set up message listener for communication with extension
-        console.log("Screen: Setting up message listener for extension communication");
-        
+        // Set up robust message listener for communication with extension
         window.addEventListener("message", (event) => {
-            this.messageReceived = true;
-            console.log("Screen: 📨 Received message event:", event.data ? event.data.type : "unknown type");
-            
-            if (event.data && event.data.type === "EXTENSION_ID") {
-                this.extensionId = event.data.id;
-                console.log("Screen: ✅ Received extension ID:", this.extensionId);
-                
-                // Validate the extension ID
-                if (!this.extensionId || this.extensionId === "null" || this.extensionId === "undefined") {
-                    console.error("Screen: ❌ Invalid extension ID received:", this.extensionId);
-                } else {
-                    // Store in sessionStorage for persistence
-                    try {
-                        sessionStorage.setItem('extensionId', this.extensionId);
-                        console.log("Screen: Stored extension ID in sessionStorage");
-                        
-                        // Check and report if extension is available after getting ID
-                        this.checkExtensionAvailability();
-                    } catch (e) {
-                        console.error("Screen: Failed to store in sessionStorage:", e);
+            // IMPORTANT: Basic security check - is the message from the window itself?
+            if (event.source !== window || !event.data || !event.data.type) {
+                return;
+            }
+
+            console.log(`Screen: 📨 Received message event: ${event.data.type}`, event.data);
+
+            switch (event.data.type) {
+                case "EXTENSION_ID":
+                    if (event.data.id) {
+                        console.log(`Screen: ✅ Received EXTENSION_ID: ${event.data.id}`);
+                        this.extensionId = event.data.id;
+                        this.isExtensionAvailable = true;
+                        // Now you can confirm communication reliably
+                        console.log("Screen: ✅ Extension communication truly confirmed.");
+                        // Potentially trigger actions that were waiting for the extension
+                    } else {
+                        console.warn("Screen: Received EXTENSION_ID message but ID was missing.");
                     }
-                }
-            } else if (event.data && event.data.type === "EXTENSION_LOADED") {
-                console.log("Screen: ✅ Extension loaded message received with ID:", event.data.id);
-                this.extensionId = event.data.id;
-                
-                // Validate the extension ID
-                if (!this.extensionId || this.extensionId === "null" || this.extensionId === "undefined") {
-                    console.error("Screen: ❌ Invalid extension ID received from EXTENSION_LOADED:", this.extensionId);
-                } else {
-                    // Store in sessionStorage for persistence
-                    try {
-                        sessionStorage.setItem('extensionId', this.extensionId);
-                        console.log("Screen: Stored extension ID from EXTENSION_LOADED in sessionStorage");
-                        
-                        // Check and report if extension is available after getting ID
-                        this.checkExtensionAvailability();
-                    } catch (e) {
-                        console.error("Screen: Failed to store in sessionStorage:", e);
+                    break;
+
+                case "EXTENSION_LOADED":
+                    if (event.data.id) {
+                        console.log(`Screen: ✅ Received EXTENSION_LOADED: ${event.data.id}`);
+                        if (!this.extensionId) { // If ID wasn't received yet
+                            this.extensionId = event.data.id;
+                            this.isExtensionAvailable = true;
+                            console.log("Screen: ✅ Extension communication confirmed via EXTENSION_LOADED.");
+                        }
                     }
-                }
-            } else if (event.data && event.data.type === "SCREENSHOT_RESULT") {
-                console.log("Screen: Screenshot result received");
-                this.handleScreenCapture(event.data);
+                    break;
+
+                case "SCREENSHOT_RESULT":
+                    console.log("Screen: Received SCREENSHOT_RESULT", event.data);
+                    this.handleScreenCapture(event.data);
+                    break;
+
+                // Handle other message types if needed
             }
         });
-        
-        // Try to get extension ID from sessionStorage if available
-        try {
-            const storedId = sessionStorage.getItem('extensionId');
-            if (storedId) {
-                console.log("Screen: Retrieved extension ID from sessionStorage:", storedId);
-                this.extensionId = storedId;
+
+        // Request extension ID early
+        this.requestExtensionId();
+
+        // Optional: Set a timeout to check if the ID was received
+        setTimeout(() => {
+            if (!this.isExtensionAvailable) {
+                console.warn("Screen: Extension ID not received after timeout. Extension might not be installed or active.");
+                // Update UI or state to reflect unavailable extension
             }
-        } catch (e) {
-            console.error("Screen: Failed to retrieve from sessionStorage:", e);
-        }
-        
-        // Check if Chrome runtime is available (extension is loaded)
-        this.checkExtensionAvailability();
-        
-        // Request extension ID explicitly
-        console.log("Screen: Explicitly requesting extension ID");
-        window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
-        
-        // Set a delayed check to validate communication
-        setTimeout(() => this.validateCommunication(), 3000);
-    }
-    
-    /**
-     * Check and log if the extension is available
-     */
-    checkExtensionAvailability() {
-        // Verify if chrome and runtime exist
-        this.extensionAvailable = typeof chrome !== 'undefined' && chrome.runtime;
-        
-        // Log detailed extension detection results
-        console.log("Screen: Chrome object available:", typeof chrome !== 'undefined');
-        console.log("Screen: Chrome runtime available:", this.extensionAvailable);
-        console.log("Screen: Current extension ID:", this.extensionId);
-        
-        if (!this.extensionAvailable) {
-            console.warn("Screen: ⚠️ Chrome extension runtime not available - screenshot functionality will not work");
-        } else if (!this.extensionId) {
-            console.warn("Screen: ⚠️ Extension ID not available despite runtime being available");
-        } else {
-            console.log("Screen: ✅ Extension appears to be properly configured");
-        }
-    }
-    
-    /**
-     * Validate if we're receiving communication from the extension
-     */
-    validateCommunication() {
-        if (!this.messageReceived) {
-            console.error("Screen: ❌ No messages received from extension after timeout");
-            console.log("Screen: Extension status - ID:", this.extensionId, "Available:", this.extensionAvailable);
-            
-            // Attempt to re-request the extension ID
-            console.log("Screen: Re-requesting extension ID after timeout");
-            window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
-        } else {
-            console.log("Screen: ✅ Communication with extension confirmed");
-        }
-    }
-    
-    /**
-     * Check if the browser extension is installed and available
-     * @returns {boolean} True if extension is available
-     */
-    isExtensionAvailable() {
-        return this.extensionAvailable && this.extensionId !== null;
+        }, 5000); // Wait 5 seconds
+
+        this.loadImageAsDataURL(); // Load image as DataURL on construction
     }
 
-    // Fallback image functionality removed for simplicity
+    // Function to request the ID
+    requestExtensionId() {
+        console.log("Screen: Requesting Extension ID from content script...");
+        window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
+    }
+
+    // Function to trigger screenshot
+    takeScreenshot() {
+        console.log("Screen: Attempting to take screenshot...");
+        if (!this.isExtensionAvailable || !this.extensionId) {
+            console.error("Screen: Cannot take screenshot, extension ID not available.");
+            // Optionally re-request ID or notify user
+            this.requestExtensionId(); // Try asking again
+            return;
+        }
+        console.log(`Screen: Sending TAKE_SCREENSHOT request via postMessage.`);
+        window.postMessage({ type: "TAKE_SCREENSHOT" }, "*");
+    }
+
+    checkExtensionAvailability() {
+        console.log(`Screen: Checking extension availability: ${this.isExtensionAvailable}`);
+        return this.isExtensionAvailable;
+    }
+
+    async loadImageAsDataURL() {
+        return fetch(this.loadingImagePath)
+            .then((response) => response.blob())
+            .then(
+                (blob) =>
+                    new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    }),
+            )
+            .then((dataUrl) => (this.loadingImageDataUrl = dataUrl))
+            .catch((error) =>
+                console.error("Error loading image as DataURL:", error),
+            );
+    }
 
     handleScreenCapture(response) {
         console.log("Screen: Received capture response:", response);
@@ -169,12 +152,10 @@ export class ScreenManager {
             else if (response.data) {
                 img.src = "data:image/png;base64," + response.data;
             }
-            // If no valid image data, just display empty preview
+            // Fallback to test image if no valid data
             else {
-                console.warn("Screen: No valid image data");
-                preview.innerHTML = "";
-                preview.style.display = "none";
-                return;
+                console.warn("Screen: No valid image data, using test image");
+                img.src = this.loadingImageDataUrl || this.loadingImagePath; // Use loading image data URL or path
             }
 
             img.style.width = "100%";
@@ -205,6 +186,23 @@ export class ScreenManager {
 
         // Create full data URL for image loading
         const dataUrl = "data:image/png;base64," + base64Data;
+
+        // Update preview
+        const preview = document.getElementById("screenPreview");
+        if (preview) {
+            console.log("Screen: Updating preview in processImage");
+            const previewImg = document.createElement("img");
+            previewImg.src = dataUrl;
+            previewImg.style.width = "100%";
+            previewImg.style.height = "auto";
+            preview.innerHTML = "";
+            preview.appendChild(previewImg);
+            // Make sure the preview is visible
+            preview.style.display = "block";
+            console.log("Screen: Preview updated in processImage");
+        } else {
+            console.warn("Screen: Preview element not found in processImage");
+        }
 
         const img = new Image();
 
@@ -273,46 +271,43 @@ export class ScreenManager {
         if (this.isInitialized) return;
 
         console.log("Screen: Initializing screen capture");
-        console.log("Screen: Extension available:", this.extensionAvailable);
 
         try {
-            // Check if extension is installed by sending a message to find the extension ID
-            window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
+            // Request extension ID using our dedicated method
+            this.requestExtensionId();
+            console.log("Screen: Explicitly requesting extension ID");
 
-            // Set up empty preview element
+            // Show preview element
             const preview = document.getElementById("screenPreview");
             if (preview) {
                 console.log("Screen: Setting up initial preview");
-                // Simply clear it and make it ready for screenshots
+                preview.style.display = "block";
+
+                // Create and set up the image element
+                const img = document.createElement("img");
+                img.src = this.loadingImageDataUrl || this.loadingImagePath;
+                img.style.width = "100%";
+                img.style.height = "100%";
+                img.style.objectFit = "contain";
+
+                // Add error handling for the image
+                img.onerror = (e) => {
+                    console.error(
+                        "Screen: Error loading initial preview image:",
+                        e,
+                    );
+                    // Try with a simpler approach as fallback
+                    img.src = this.loadingImageDataUrl || this.loadingImagePath;
+                };
+
+                // Clear and append
                 preview.innerHTML = "";
-                preview.style.display = "none"; // Hide until we have an actual screenshot
-                console.log("Screen: Initial preview container prepared");
+                preview.appendChild(img);
+                console.log("Screen: Initial preview set up");
             } else {
                 console.warn(
                     "Screen: Preview element not found during initialization",
                 );
-            }
-            
-            // Check if we already have extension ID from storage
-            try {
-                const storedId = sessionStorage.getItem('extensionId');
-                if (storedId) {
-                    console.log("Screen: Using extension ID from sessionStorage during initialize:", storedId);
-                    this.extensionId = storedId;
-                } else {
-                    // Request extension ID again explicitly
-                    console.log("Screen: Re-requesting extension ID during initialize");
-                    window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
-                    
-                    // Set a timeout to check if we got the extension ID
-                    setTimeout(() => {
-                        console.log("Screen: Extension ID check timeout - current status:", 
-                                   "ID:", this.extensionId,
-                                   "Available:", this.isExtensionAvailable());
-                    }, 2000);
-                }
-            } catch (e) {
-                console.error("Screen: Failed to work with sessionStorage in initialize:", e);
             }
 
             this.isInitialized = true;
@@ -334,126 +329,27 @@ export class ScreenManager {
         }
 
         console.log("Screen: Capturing screenshot");
-        
-        // Try to get extension ID from sessionStorage again (in case it was set after initialization)
-        try {
-            const storedId = sessionStorage.getItem('extensionId');
-            if (storedId && !this.extensionId) {
-                console.log("Screen: Retrieved extension ID from sessionStorage in capture():", storedId);
-                this.extensionId = storedId;
-            }
-        } catch (e) {
-            console.error("Screen: Failed to retrieve from sessionStorage in capture():", e);
-        }
-        
-        console.log("Screen: Extension status before capture -", 
-                   "ID available:", !!this.extensionId, 
-                   "Runtime available:", this.extensionAvailable);
 
         try {
-            // If we have the extension ID and chrome runtime is available, use it to request a screenshot
-            if (this.extensionId && this.extensionAvailable) {
+            // Use the new takeScreenshot method which uses postMessage
+            if (this.isExtensionAvailable && this.extensionId) {
                 console.log(
-                    "Screen: ✅ Requesting screenshot from extension:",
-                    this.extensionId,
+                    "Screen: Requesting screenshot via postMessage:",
+                    this.extensionId
                 );
 
-                // Request screenshot via extension messaging
-                chrome.runtime.sendMessage(
-                    this.extensionId,
-                    { type: "TAKE_SCREENSHOT" },
-                    (response) => {
-                        console.log(
-                            "Screen: Received response from extension:",
-                            response,
-                        );
+                // Use the takeScreenshot method to request a screenshot
+                this.takeScreenshot();
 
-                        if (chrome.runtime.lastError) {
-                            console.error(
-                                "Screen: Extension error details:",
-                                chrome.runtime.lastError,
-                            );
-                            window.postMessage(
-                                {
-                                    type: "SCREENSHOT_RESULT",
-                                    success: false,
-                                    message:
-                                        "Extension error: " +
-                                        chrome.runtime.lastError.message,
-                                },
-                                "*",
-                            );
-                            return;
-                        }
-
-                        if (response && response.success) {
-                            console.log(
-                                "Screen: Processing successful screenshot response",
-                            );
-
-                            // Handle different response formats
-                            let data, fullData;
-
-                            // If response has imageData property (old format)
-                            if (response.imageData) {
-                                // Check if it's a full data URL or just base64
-                                if (
-                                    response.imageData.startsWith("data:image")
-                                ) {
-                                    fullData = response.imageData;
-                                    data = response.imageData.split(",")[1];
-                                } else {
-                                    // Assume it's just base64 data
-                                    data = response.imageData;
-                                    fullData = "data:image/png;base64," + data;
-                                }
-                            }
-                            // If response has data and fullData properties (new format from ScreenshotHandler)
-                            else if (response.data) {
-                                data = response.data;
-                                fullData =
-                                    response.fullData ||
-                                    "data:image/png;base64," + data;
-                            }
-
-                            // Send the message with the screenshot data
-                            window.postMessage(
-                                {
-                                    type: "SCREENSHOT_RESULT",
-                                    success: true,
-                                    data: data,
-                                    fullData: fullData,
-                                },
-                                "*",
-                            );
-                        } else {
-                            console.error(
-                                "Screen: Screenshot failed:",
-                                response ? response.message : "Unknown error",
-                            );
-                            window.postMessage(
-                                {
-                                    type: "SCREENSHOT_RESULT",
-                                    success: false,
-                                    message: response
-                                        ? response.message
-                                        : "Unknown error",
-                                },
-                                "*",
-                            );
-                        }
-                    },
-                );
-
-                // No need to return any fallback image
-                return null;
+                // Use test image as fallback while waiting for the real screenshot
+                return this.processImage(this.loadingImageDataUrl);
             } else {
-                console.warn("Screen: Extension ID not available");
-                // Try to get extension ID again
-                window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
-                
-                // Return a message to be displayed in the console
-                return null;
+                console.warn(
+                    "Screen: Extension ID not available, using test image"
+                );
+                // Try requesting the extension ID again
+                this.requestExtensionId();
+                return this.processImage(this.loadingImageDataUrl);
             }
         } catch (error) {
             console.error("Screen: Error capturing screenshot:", error);

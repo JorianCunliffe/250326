@@ -193,21 +193,55 @@ export class GeminiAgent{
         }
 
         try {
+            // Initialize the screen manager
             await this.screenManager.initialize();
 
-            // Set up interval to capture and send screenshots
-            this.screenInterval = setInterval(async () => {
-                const imageBase64 = await this.screenManager.capture();
-                if (imageBase64) {
-                    this.client.sendImage(imageBase64);
-                }
-            }, this.captureInterval);
+            // Check if extension is available using the reliable flag
+            if (this.screenManager.isExtensionAvailable) {
+                console.info('Screen extension available, using real screen capture');
 
-            // Log extension availability for debugging
-            if (this.screenManager && !this.screenManager.isExtensionAvailable()) {
-                console.warn('Screen sharing started, but extension is not available. Please install the browser extension for screen sharing.');
+                // Set up interval to capture and send screenshots
+                this.screenInterval = setInterval(async () => {
+                    const imageBase64 = await this.screenManager.capture();
+                    this.client.sendImage(imageBase64);
+                }, this.captureInterval);
+
+                console.info('Real screen sharing started');
             } else {
-                console.info('Screen sharing started with extension support');
+                console.warn('Screen extension not available, using sample image fallback');
+
+                // Load and convert sample image to base64
+                const loadSampleImage = async () => {
+                    try {
+                        const response = await fetch('./js/screen/LOADING.png');
+                        const blob = await response.blob();
+                        return new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                                // Get base64 data without the prefix
+                                const base64Data = reader.result.split(',')[1];
+                                resolve(base64Data);
+                            };
+                            reader.onerror = reject;
+                            reader.readAsDataURL(blob);
+                        });
+                    } catch (error) {
+                        console.error('Error loading sample image:', error);
+                        return null;
+                    }
+                };
+
+                // Get the sample image base64 data
+                const sampleImageBase64 = await loadSampleImage();
+
+                // Set up interval with fixed 500ms delay
+                this.screenInterval = setInterval(() => {
+                    if (sampleImageBase64) {
+                        this.client.sendImage(sampleImageBase64);
+                    }
+                }, 500); // Fixed 500ms interval
+
+                console.info('Screen sharing started with sample image');
             }
         } catch (error) {
             await this.stopScreenShare();
