@@ -56,7 +56,7 @@ export class GeminiAgent{
         });
         this.cameraInterval = null;
 
-        // Initialize screen sharing
+        // Initialize screen sharing - client will be set after connection
         this.screenManager = new ScreenManager({
             width: this.resizeWidth,
             quality: this.quality,
@@ -131,6 +131,10 @@ export class GeminiAgent{
     async connect() {
         this.client = new GeminiWebsocketClient(this.name, this.url, this.config);
         await this.client.connect();
+        
+        // Update screen manager with client instance
+        this.screenManager.config.client = this.client;
+        
         this.setupEventListeners();
         this.connected = true;
     }
@@ -192,6 +196,11 @@ export class GeminiAgent{
             throw new Error('Websocket must be connected to start screen sharing');
         }
 
+        // Ensure screenManager is initialized with the client
+        if (!this.screenManager || !this.screenManager.config.client) {
+            throw new Error('ScreenManager not initialized correctly with WebSocket client.');
+        }
+
         try {
             // Initialize the screen manager
             await this.screenManager.initialize();
@@ -200,10 +209,16 @@ export class GeminiAgent{
             if (this.screenManager.isExtensionAvailable) {
                 console.info('Screen extension available, using real screen capture');
 
-                // Set up interval to capture and send screenshots
-                this.screenInterval = setInterval(async () => {
-                    const imageBase64 = await this.screenManager.capture();
-                    this.client.sendImage(imageBase64);
+                // Clear any existing interval
+                if (this.screenInterval) {
+                    clearInterval(this.screenInterval);
+                }
+
+                // Set up interval to request screenshots
+                this.screenInterval = setInterval(() => {
+                    // Just request the screenshot; don't await or send here
+                    console.log("Agent Interval: Requesting screenshot capture...");
+                    this.screenManager.takeScreenshot(); // Use the method that sends the postMessage
                 }, this.captureInterval);
 
                 console.info('Real screen sharing started');
@@ -244,6 +259,7 @@ export class GeminiAgent{
                 console.info('Screen sharing started with sample image');
             }
         } catch (error) {
+            console.error('Failed to start screen sharing interval:', error);
             await this.stopScreenShare();
             throw new Error('Failed to start screen sharing: ' + error);
         }
