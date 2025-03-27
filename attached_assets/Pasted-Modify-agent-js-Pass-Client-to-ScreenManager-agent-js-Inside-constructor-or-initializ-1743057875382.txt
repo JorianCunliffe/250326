@@ -1,0 +1,61 @@
+Modify agent.js - Pass Client to ScreenManager:
+
+// agent.js
+
+// Inside constructor or initialization where client is available
+async connect() { // Or wherever client is reliably created
+    this.client = new GeminiWebsocketClient(this.name, this.url, this.config);
+    await this.client.connect();
+
+    // --- MODIFICATION START ---
+    // Initialize screen manager *after* client is connected and pass client
+    this.screenManager = new ScreenManager({
+        width: this.resizeWidth,
+        quality: this.quality,
+        client: this.client, // Pass the client instance
+        onStop: () => {
+            // ... (existing onStop logic) ...
+        }
+    });
+    // --- MODIFICATION END ---
+
+
+    this.setupEventListeners();
+    this.connected = true;
+}
+
+// Modify startScreenShare - Interval just triggers, doesn't send
+async startScreenShare() {
+    if (!this.connected) {
+        throw new Error('Websocket must be connected to start screen sharing');
+    }
+    // Ensure screenManager is initialized with the client
+    if (!this.screenManager || !this.screenManager.config.client) {
+         throw new Error('ScreenManager not initialized correctly with WebSocket client.');
+    }
+
+    try {
+        await this.screenManager.initialize(); // Initialize UI etc.
+
+        // Clear any existing interval
+        if (this.screenInterval) {
+            clearInterval(this.screenInterval);
+        }
+
+        // Set up interval to *request* screenshots
+        this.screenInterval = setInterval(() => {
+            // --- MODIFICATION ---
+            // Just request the screenshot; don't await or send here
+            console.log("Agent Interval: Requesting screenshot capture...");
+            this.screenManager.takeScreenshot(); // Use the method that sends the postMessage
+            // --- END MODIFICATION ---
+        }, this.captureInterval); // Use the defined interval
+
+        console.info('Screen sharing trigger interval started');
+    } catch (error) {
+        console.error('Failed to start screen sharing interval:', error); // Log error
+        await this.stopScreenShare(); // Attempt cleanup on error
+        // Optionally re-throw or handle differently
+        // throw new Error('Failed to start screen sharing: ' + error.message);
+    }
+}
