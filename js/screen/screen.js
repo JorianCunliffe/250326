@@ -3,367 +3,273 @@
 export class ScreenManager {
     /**
      * @param {Object} config
-     * @param {number} config.width - Target width for resizing captured images
-     * @param {number} config.quality - JPEG quality (0-1)
+     * @param {number} [config.width=1280] - Target width for resizing captured images
+     * @param {number} [config.quality=0.8] - JPEG quality (0-1)
      * @param {Function} [config.onStop] - Callback when screen capture stops
      */
-    constructor(config) {
+    constructor(config = {}) { // Add default for config
         this.config = {
             width: config.width || 1280,
             quality: config.quality || 0.8,
             onStop: config.onStop || (() => {}),
         };
 
-        this.captureInterval = null;
+        this.captureInterval = null; // Note: Not used in current logic, consider removing if unused
         this.isInitialized = false;
-        this.extensionId = null; // Will store the extension ID
-        this.isExtensionAvailable = false; // Track extension availability status
+        this.extensionId = null;
+        this.isExtensionAvailable = false;
+        this.isProcessing = false; // Flag to prevent concurrent processing attempts
 
-        // Loading image path for initialization and fallbacks
-        this.loadingImagePath = "js/screen/LOADING.png";
-        this.loadingImageDataUrl = null; // Added to store the data URL of the loading image
+        // REMOVED loadingImagePath and loadingImageDataUrl related logic for initial load
 
         this.handleScreenCapture = this.handleScreenCapture.bind(this);
+        this.processImage = this.processImage.bind(this); // Ensure correct 'this' context
 
-        // Set up robust message listener for communication with extension
+        // --- Message Listener Setup ---
         window.addEventListener("message", (event) => {
-            // IMPORTANT: Basic security check - is the message from the window itself?
             if (event.source !== window || !event.data || !event.data.type) {
                 return;
             }
-
-            console.log(`Screen: 📨 Received message event: ${event.data.type}`, event.data);
+            // console.log(`Screen: 📨 Received message event: ${event.data.type}`, event.data); // Keep for debugging if needed
 
             switch (event.data.type) {
                 case "EXTENSION_ID":
-                    if (event.data.id) {
-                        console.log(`Screen: ✅ Received EXTENSION_ID: ${event.data.id}`);
+                case "EXTENSION_LOADED": // Treat both similarly for setting ID
+                    if (event.data.id && !this.extensionId) { // Only set if ID received and not already set
+                        console.log(`Screen: ✅ Received Extension ID via ${event.data.type}: ${event.data.id}`);
                         this.extensionId = event.data.id;
                         this.isExtensionAvailable = true;
-                        // Now you can confirm communication reliably
-                        console.log("Screen: ✅ Extension communication truly confirmed.");
-                        // Potentially trigger actions that were waiting for the extension
-                    } else {
-                        console.warn("Screen: Received EXTENSION_ID message but ID was missing.");
-                    }
-                    break;
-
-                case "EXTENSION_LOADED":
-                    if (event.data.id) {
-                        console.log(`Screen: ✅ Received EXTENSION_LOADED: ${event.data.id}`);
-                        if (!this.extensionId) { // If ID wasn't received yet
-                            this.extensionId = event.data.id;
-                            this.isExtensionAvailable = true;
-                            console.log("Screen: ✅ Extension communication confirmed via EXTENSION_LOADED.");
-                        }
+                        console.log("Screen: ✅ Extension communication confirmed.");
+                    } else if (!event.data.id) {
+                        console.warn(`Screen: Received ${event.data.type} message but ID was missing.`);
                     }
                     break;
 
                 case "SCREENSHOT_RESULT":
-                    console.log("Screen: Received SCREENSHOT_RESULT", event.data);
+                    console.log("Screen: Received SCREENSHOT_RESULT");
+                    // Pass the *entire* event.data object which contains success, imageData/fullData, message
                     this.handleScreenCapture(event.data);
                     break;
-
-                // Handle other message types if needed
             }
         });
 
-        // Request extension ID early
         this.requestExtensionId();
 
-        // Optional: Set a timeout to check if the ID was received
         setTimeout(() => {
             if (!this.isExtensionAvailable) {
-                console.warn("Screen: Extension ID not received after timeout. Extension might not be installed or active.");
-                // Update UI or state to reflect unavailable extension
+                console.warn("Screen: Extension ID not received after 5s. Extension might not be installed/active or content script blocked.");
             }
-        }, 5000); // Wait 5 seconds
+        }, 5000);
 
-        this.loadImageAsDataURL(); // Load image as DataURL on construction
+        // REMOVED: loadImageAsDataURL() call from constructor
     }
 
-    // Function to request the ID
     requestExtensionId() {
         console.log("Screen: Requesting Extension ID from content script...");
-        window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
+        // Check if postMessage is available (it should be)
+        if (window.postMessage) {
+            window.postMessage({ type: "GET_EXTENSION_ID" }, "*");
+        } else {
+            console.error("Screen: window.postMessage is not available in this context.");
+        }
     }
 
-    // Function to trigger screenshot
     takeScreenshot() {
         console.log("Screen: Attempting to take screenshot...");
         if (!this.isExtensionAvailable || !this.extensionId) {
-            console.error("Screen: Cannot take screenshot, extension ID not available.");
-            // Optionally re-request ID or notify user
-            this.requestExtensionId(); // Try asking again
-            return;
+            console.error("Screen: Cannot take screenshot, extension not available.");
+            this.requestExtensionId(); // Try asking again, but don't assume it will work immediately
+            // Maybe notify the user or return a specific status?
+            return false; // Indicate failure to initiate
+        }
+        if (!window.postMessage) {
+            console.error("Screen: window.postMessage is not available. Cannot send screenshot request.");
+            return false; // Indicate failure
         }
         console.log(`Screen: Sending TAKE_SCREENSHOT request via postMessage.`);
         window.postMessage({ type: "TAKE_SCREENSHOT" }, "*");
+        return true; // Indicate request was sent
     }
 
     checkExtensionAvailability() {
-        console.log(`Screen: Checking extension availability: ${this.isExtensionAvailable}`);
         return this.isExtensionAvailable;
     }
 
-    async loadImageAsDataURL() {
-        return fetch(this.loadingImagePath)
-            .then((response) => response.blob())
-            .then(
-                (blob) =>
-                    new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(blob);
-                    }),
-            )
-            .then((dataUrl) => (this.loadingImageDataUrl = dataUrl))
-            .catch((error) =>
-                console.error("Error loading image as DataURL:", error),
-            );
-    }
+    // REMOVED loadImageAsDataURL function entirely as initial load is removed
 
     handleScreenCapture(response) {
-        console.log("Screen: Received capture response:", response);
+        // Expects response = { success: boolean, imageData?: string, message?: string }
+        // Note: background.js should send the *full* dataUrl in 'imageData'
+        console.log("Screen: Handling capture response:", response);
+        const preview = document.getElementById("screenPreview");
 
-        if (!response || !response.success) {
-            console.error(
-                "Screen: Invalid screen capture response:",
-                response.message || "Unknown error",
-            );
+        if (!preview) {
+            console.error("Screen: Preview element (#screenPreview) not found in DOM.");
+            return; // Cannot proceed without preview element
+        }
+
+        if (!response || !response.success || !response.imageData) {
+            const errorMsg = response?.message || "Unknown screen capture error or no image data";
+            console.error(`Screen: Screen capture failed or invalid response: ${errorMsg}`);
+            // Optionally display an error state in the preview
+            preview.innerHTML = `<p style="color: red; padding: 10px;">Screenshot Failed: ${errorMsg}</p>`;
+            preview.style.display = "block"; // Ensure preview area is visible to show error
             return;
         }
 
-        const preview = document.getElementById("screenPreview");
-        if (preview) {
-            console.log("Screen: Setting up preview");
-            const img = document.createElement("img");
+        // --- Display successful screenshot ---
+        console.log("Screen: Setting up preview for successful screenshot.");
+        const img = document.createElement("img");
 
-            // Ensure we have a proper data URL
-            // If fullData is provided and it's a complete data URL, use it directly
-            if (
-                response.fullData &&
-                response.fullData.startsWith("data:image")
-            ) {
-                img.src = response.fullData;
-            }
-            // If we have data (base64 without prefix), add the prefix
-            else if (response.data) {
-                img.src = "data:image/png;base64," + response.data;
-            }
-            // Fallback to test image if no valid data
-            else {
-                console.warn("Screen: No valid image data, using test image");
-                img.src = this.loadingImageDataUrl || this.loadingImagePath; // Use loading image data URL or path
-            }
+        img.onload = () => {
+            console.log("Screen: Preview image loaded successfully.");
+            // You could potentially do resizing *after* load here if needed
+        };
 
-            img.style.width = "100%";
-            img.style.height = "auto";
-            preview.innerHTML = "";
-            preview.appendChild(img);
-            // Make sure the preview is visible
+        img.onerror = (e) => {
+            console.error("Screen: CRITICAL - Error loading received screenshot data URL into preview.", e);
+            console.error("Screen: This likely means the 'data:' URL is blocked by Content Security Policy (CSP)!");
+            console.error("Screen: Please check the **web page's console** (not the extension's) for CSP errors related to 'img-src'.");
+            preview.innerHTML = `<p style="color: red; padding: 10px;">Error displaying screenshot. Check console for CSP errors.</p>`;
             preview.style.display = "block";
-            console.log(
-                "Screen: Preview updated with src:",
-                img.src.substring(0, 30) + "...",
-            );
-        } else {
-            console.error("Screen: Preview element not found");
-        }
+        };
+
+        // Set the source - background.js should send the full data URL
+        img.src = response.imageData;
+
+        img.style.width = "100%";
+        img.style.height = "auto"; // Maintain aspect ratio
+        img.style.display = "block"; // Make sure image itself is visible
+
+        preview.innerHTML = ""; // Clear previous content (like error messages)
+        preview.appendChild(img);
+        preview.style.display = "block"; // Ensure preview container is visible
+
+        console.log("Screen: Preview updated with received image.");
+
+        // --- Optional: Process the image AFTER displaying ---
+        // If you need the resized/JPEG version for sending elsewhere
+        // this.processImage(response.imageData)
+        //    .then(processedData => {
+        //        if (processedData) {
+        //             console.log("Screen: Image processed successfully after display.");
+        //             // Use processedData (base64 string without prefix)
+        //        }
+        //    });
     }
 
-    async processImage(imageData) {
-        if (!imageData) {
-            console.error("Screen: No image data to process");
+    async processImage(imageDataUrl) {
+         // Input should be a full data URL (e.g., from response.imageData)
+        if (!imageDataUrl || !imageDataUrl.startsWith("data:image")) {
+            console.error("Screen: processImage requires a valid data URL.", imageDataUrl ? imageDataUrl.substring(0, 30) + "..." : "null");
             return null;
         }
 
-        // Check if imageData already has the data URL prefix
-        const base64Data = imageData.startsWith("data:image")
-            ? imageData.split(",")[1]
-            : imageData;
-
-        // Create full data URL for image loading
-        const dataUrl = "data:image/png;base64," + base64Data;
-
-        // Update preview
-        const preview = document.getElementById("screenPreview");
-        if (preview) {
-            console.log("Screen: Updating preview in processImage");
-            const previewImg = document.createElement("img");
-            previewImg.src = dataUrl;
-            previewImg.style.width = "100%";
-            previewImg.style.height = "auto";
-            preview.innerHTML = "";
-            preview.appendChild(previewImg);
-            // Make sure the preview is visible
-            preview.style.display = "block";
-            console.log("Screen: Preview updated in processImage");
-        } else {
-            console.warn("Screen: Preview element not found in processImage");
+        if (this.isProcessing) {
+            console.warn("Screen: Already processing an image, skipping new request.");
+            return null;
         }
+        this.isProcessing = true;
+
+        console.log("Screen: Starting image processing...");
 
         const img = new Image();
 
         try {
-            // Load the image
             await new Promise((resolve, reject) => {
                 img.onload = resolve;
                 img.onerror = (e) => {
-                    console.error("Screen: Image load error:", e);
-                    reject(new Error("Failed to load image"));
+                    // This error here is also HIGHLY suspicious of CSP if it fails
+                    console.error("Screen: Error loading image data URL for processing.", e);
+                    console.error("Screen: Check web page console for CSP errors!");
+                    reject(new Error("Failed to load image for processing"));
                 };
-                // Set a timeout in case the image never loads
-                const timeout = setTimeout(() => {
-                    console.error("Screen: Image load timeout");
-                    reject(new Error("Image load timeout"));
-                }, 5000);
-
-                // Set the source after attaching event handlers
-                img.src = dataUrl;
-
-                // Clean up timeout if image loads or errors
-                img.onload = () => {
-                    clearTimeout(timeout);
-                    resolve();
-                };
-                img.onerror = (e) => {
-                    clearTimeout(timeout);
-                    console.error("Screen: Image load error:", e);
-                    reject(new Error("Failed to load image"));
-                };
+                img.src = imageDataUrl; // Load the full data URL
             });
 
-            console.log(
-                "Screen: Image loaded successfully, dimensions:",
-                img.width,
-                "x",
-                img.height,
-            );
+            console.log("Screen: Image loaded for processing, dimensions:", img.width, "x", img.height);
+
+            if (img.width === 0 || img.height === 0) {
+                throw new Error("Loaded image has zero dimensions.");
+            }
 
             const canvas = document.createElement("canvas");
             const ctx = canvas.getContext("2d");
 
-            // Calculate dimensions maintaining aspect ratio
             const aspectRatio = img.height / img.width;
             canvas.width = this.config.width;
             canvas.height = Math.round(this.config.width * aspectRatio);
 
-            // Draw and resize image
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-            // Get processed image data
-            const processedDataUrl = canvas.toDataURL(
-                "image/jpeg",
-                this.config.quality,
-            );
-            console.log("Screen: Image processed successfully");
+            const processedDataUrl = canvas.toDataURL("image/jpeg", this.config.quality);
+            console.log("Screen: Image processed to JPEG successfully.");
 
-            return processedDataUrl.split(",")[1];
+            this.isProcessing = false;
+            return processedDataUrl.split(",")[1]; // Return base64 string only
+
         } catch (error) {
-            console.error("Screen: Error processing image:", error);
-            return null;
+            console.error("Screen: Error during image processing:", error);
+            this.isProcessing = false;
+            return null; // Return null on failure
         }
     }
 
     async initialize() {
         if (this.isInitialized) return;
+        console.log("Screen: Initializing screen capture manager...");
 
-        console.log("Screen: Initializing screen capture");
+        // We request the ID in the constructor now
+        // this.requestExtensionId();
 
-        try {
-            // Request extension ID using our dedicated method
-            this.requestExtensionId();
-            console.log("Screen: Explicitly requesting extension ID");
-
-            // Show preview element
-            const preview = document.getElementById("screenPreview");
-            if (preview) {
-                console.log("Screen: Setting up initial preview");
-                preview.style.display = "block";
-
-                // Create and set up the image element
-                const img = document.createElement("img");
-                img.src = this.loadingImageDataUrl || this.loadingImagePath;
-                img.style.width = "100%";
-                img.style.height = "100%";
-                img.style.objectFit = "contain";
-
-                // Add error handling for the image
-                img.onerror = (e) => {
-                    console.error(
-                        "Screen: Error loading initial preview image:",
-                        e,
-                    );
-                    // Try with a simpler approach as fallback
-                    img.src = this.loadingImageDataUrl || this.loadingImagePath;
-                };
-
-                // Clear and append
-                preview.innerHTML = "";
-                preview.appendChild(img);
-                console.log("Screen: Initial preview set up");
-            } else {
-                console.warn(
-                    "Screen: Preview element not found during initialization",
-                );
-            }
-
-            this.isInitialized = true;
-            console.log("Screen: Screen capture initialized");
-        } catch (error) {
-            console.error(
-                "Screen: Failed to initialize screen capture:",
-                error,
-            );
-            throw new Error(
-                "Failed to initialize screen capture: " + error.message,
-            );
+        // Prepare the preview element, but leave it empty initially
+        const preview = document.getElementById("screenPreview");
+        if (preview) {
+            preview.innerHTML = ""; // Ensure it's empty
+            preview.style.display = "block"; // Make the container visible
+            // Optionally add placeholder text:
+            // preview.innerHTML = "<p>Waiting for screenshot...</p>";
+            console.log("Screen: Initial preview area prepared.");
+        } else {
+            console.warn("Screen: Preview element (#screenPreview) not found during initialization.");
         }
+
+        this.isInitialized = true;
+        console.log("Screen: Screen capture manager initialized.");
     }
 
     async capture() {
         if (!this.isInitialized) {
-            throw new Error("Capture failed: Screen capture not initialized");
+            console.error("Capture failed: Screen capture not initialized");
+            // Maybe throw new Error("ScreenManager not initialized");
+            return null; // Indicate failure or return a specific status/error
         }
 
-        console.log("Screen: Capturing screenshot");
+        console.log("Screen: Initiating capture request...");
 
-        try {
-            // Use the new takeScreenshot method which uses postMessage
-            if (this.isExtensionAvailable && this.extensionId) {
-                console.log(
-                    "Screen: Requesting screenshot via postMessage:",
-                    this.extensionId
-                );
+        // Use the takeScreenshot method which uses postMessage
+        const requestSent = this.takeScreenshot(); // Returns true if request was sent
 
-                // Use the takeScreenshot method to request a screenshot
-                this.takeScreenshot();
-
-                // Use test image as fallback while waiting for the real screenshot
-                return this.processImage(this.loadingImageDataUrl);
-            } else {
-                console.warn(
-                    "Screen: Extension ID not available, using test image"
-                );
-                // Try requesting the extension ID again
-                this.requestExtensionId();
-                return this.processImage(this.loadingImageDataUrl);
-            }
-        } catch (error) {
-            console.error("Screen: Error capturing screenshot:", error);
-            throw new Error("Error capturing screenshot: " + error.message);
+        if (!requestSent) {
+             console.warn("Screen: Screenshot request failed to send (extension unavailable?).");
+             // No fallback to loading image here anymore.
+             // The caller needs to handle the fact that no screenshot will arrive.
+             return null; // Indicate capture could not be initiated
+        } else {
+            console.log("Screen: Screenshot request sent. Waiting for SCREENSHOT_RESULT message.");
+            // We don't return image data here. We wait for the async response
+            // handled by handleScreenCapture. The caller should not expect
+            // immediate image data from capture().
+            // Return null or a Promise that resolves when the capture is handled?
+            // For now, just returning null as the data comes via message event.
+            return null;
         }
     }
 
     dispose() {
-        if (this.captureInterval) {
-            clearInterval(this.captureInterval);
-            this.captureInterval = null;
-        }
+        // Clean up any intervals or listeners if they were used
+        // if (this.captureInterval) { clearInterval(this.captureInterval); this.captureInterval = null; }
 
-        // Hide preview element
         const preview = document.getElementById("screenPreview");
         if (preview) {
             preview.style.display = "none";
@@ -371,8 +277,9 @@ export class ScreenManager {
         }
 
         this.isInitialized = false;
-        this.config.onStop();
+        console.log("Screen: Screen manager disposed.");
+        if (typeof this.config.onStop === 'function') {
+            this.config.onStop();
+        }
     }
 }
-
-// Class is exported at the top of the file
